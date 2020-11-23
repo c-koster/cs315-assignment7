@@ -88,7 +88,7 @@ int main(int argc, char *argv[])
         }
 
         conn = create_node(conn_fd,&remote_sa); // this needs rubber duck
-        
+
         // put the thread here, and send the fd,SA,buffer into a new thread
         if (pthread_create(&child_thread, NULL, handle_connection, &conn) < 0) {
             perror("pthread_create");
@@ -175,6 +175,8 @@ connection *create_node(int conn_fd, struct sockaddr_in *remote_sa)
 /*
  * broadcast_all -
  * input:
+ * -visit all items in the linked list and write msg to their fd/sockaddr
+ * -maybe a file descriiptor to ignore (the person who sent it)
  * output: whatever
  */
 int broadcast(char *msg)
