@@ -32,15 +32,15 @@ typedef struct connection {
 pthread_mutex_t rubber_duck;
 
 // there is a head node which is globally accessable
-connection head = NULL;
+connection *conn_head = NULL;
 
 // make a linked list of thread/clients full of file descriptor and client info
 // that I need, and write the input string to all connections.
 
 void *handle_connection(void *data);
-connection *create_node(int fd, struct sockaddr_in sa); // create a node
-int broadcast_all(char *msg); // visit every node
-int quit(connection *fd); // delete a node from the linked list
+connection *create_node(int fd, struct sockaddr_in *sa); // create a node
+int broadcast(char *msg); // visit every node
+int remove_node(connection *fd); // delete a node from the linked list
 
 
 
@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
     // setup threaded handling of a client --
     struct sockaddr_in remote_sa;
     socklen_t addrlen;
-    connection next;
+    connection *conn;
     pthread_t child_thread;
 
 
@@ -75,29 +75,28 @@ int main(int argc, char *argv[])
 
     bind(listen_fd, res->ai_addr, res->ai_addrlen);
 
-    /* start listening */
+    // start listening
     listen(listen_fd, BACKLOG);
 
     // infinite loop of accepting new connections and handling them
     while (1) {
         /* accept a new connection (will block until one appears) */
-
         addrlen = sizeof(remote_sa);
         if ((conn_fd = accept(listen_fd, (struct sockaddr *) &remote_sa, &addrlen)) < 0) {
             perror("accept");
             exit(15);
         }
-        next = create_node(remote_sa,conn_fd);
-        
-        conn.sa = remote_sa;
-        conn.fd = conn_fd;
 
+        conn = create_node(conn_fd,&remote_sa); // this needs rubber duck
+        
         // put the thread here, and send the fd,SA,buffer into a new thread
         if (pthread_create(&child_thread, NULL, handle_connection, &conn) < 0) {
             perror("pthread_create");
             exit(11);
         }
+
     }
+    // anything to do when all clients disconnect?
 }
 
 /*
@@ -105,19 +104,16 @@ int main(int argc, char *argv[])
  * input: pointer to a fresh conn struct
  * output: whatever
  */
-void *handle_connection(void *data) {
+void *handle_connection(void *data)
+{
 
     char *remote_ip;
     uint16_t remote_port;
-
     int bytes_received;
 
-
-    connection *conn = (connection *) data;
-    // unpack all my variables into this thread's stack variables.
-
-
-    /* announce our communication partner */
+    connection *conn = (connection *) data; // unpack all my variables
+    //printf("conn: %d\n",conn->sa);
+    // announce our communication partner  -- eventually to be a call to broadcast
     remote_ip = inet_ntoa(conn->sa.sin_addr);
     remote_port = ntohs(conn->sa.sin_port);
     printf("new connection from %s:%d\n", remote_ip, remote_port);
@@ -141,15 +137,57 @@ void *handle_connection(void *data) {
     return NULL;
 }
 
-// singly-linked-list operations
-connection *handle_connection(void *data) {
+// singly-linked-list operations -- -- --
 
 
+/*
+ * create_node -
+ * input: pointer to a fresh conn struct
+ * output: whatever
+ */
+connection *create_node(int conn_fd, struct sockaddr_in *remote_sa)
+{
+    if (conn_head == NULL) {
+        conn_head = malloc(sizeof(struct connection));
+        conn_head->next = NULL;
+        printf("ptr:%p\n",conn_head);
+        conn_head->sa = *remote_sa;
+        conn_head->fd = conn_fd;
+
+        return conn_head;
+    }
+
+    connection *curr = conn_head;
+    while (curr->next != NULL) {
+        curr = curr->next;
+    }
+
+    curr->next = malloc(sizeof(struct connection));
+    curr = curr->next;
+    curr->sa = *remote_sa;
+    curr->fd = conn_fd;
+    curr->next = NULL;
+
+    return curr;
 }
 
 
+/*
+ * broadcast_all -
+ * input:
+ * output: whatever
+ */
+int broadcast(char *msg)
+{
+    return 0;
+}
 
-
-int broadcast_all() {
+/*
+ * remove_node -
+ * input:
+ * output: whatever
+ */
+int remove_node(connection *fd)
+{
     return 0;
 }
