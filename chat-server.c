@@ -1,7 +1,7 @@
 /*
- * chat-server.c
- * Culton Koster and Victoria Toth
- */
+* chat-server.c
+* Culton Koster and Victoria Toth
+*/
 
 #include <stdlib.h>
 #include <sys/types.h>
@@ -13,24 +13,53 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 
+#include <pthread.h>
+
 #define BACKLOG 10
 #define BUF_SIZE 4096
 
+typedef struct connection {
+    int fd;
+    struct sockaddr_in sa;
+    // these come from the accept statement
+    char buf[BUF_SIZE];
+    // pass in a buffer so my broadcast_all function can write to threads
+    char *nickname;
+    struct connection *next; // keep a pointer to the next node.
+} connection;
+
+// gvars: there is one rubber duck
+pthread_mutex_t rubber_duck;
+
+// there is a head node which is globally accessable
+connection head = NULL;
+
+// make a linked list of thread/clients full of file descriptor and client info
+// that I need, and write the input string to all connections.
+
+void *handle_connection(void *data);
+connection *create_node(int fd, struct sockaddr_in sa); // create a node
+int broadcast_all(char *msg); // visit every node
+int quit(connection *fd); // delete a node from the linked list
+
+
+
 int main(int argc, char *argv[])
 {
+    // create a socket for listening --
     char *listen_port;
-    int listen_fd, conn_fd;
+    int listen_fd,conn_fd;
     struct addrinfo hints, *res;
     int rc;
+
+    // setup threaded handling of a client --
     struct sockaddr_in remote_sa;
-    uint16_t remote_port;
     socklen_t addrlen;
-    char *remote_ip;
-    char buf[BUF_SIZE];
-    int bytes_received;
+    connection next;
+    pthread_t child_thread;
+
 
     listen_port = argv[1];
-
     /* create a socket */
     listen_fd = socket(PF_INET, SOCK_STREAM, 0);
 
@@ -49,27 +78,78 @@ int main(int argc, char *argv[])
     /* start listening */
     listen(listen_fd, BACKLOG);
 
-    /* infinite loop of accepting new connections and handling them */
+    // infinite loop of accepting new connections and handling them
     while (1) {
         /* accept a new connection (will block until one appears) */
+
         addrlen = sizeof(remote_sa);
-        conn_fd = accept(listen_fd, (struct sockaddr *) &remote_sa, &addrlen);
-
-        /* announce our communication partner */
-        remote_ip = inet_ntoa(remote_sa.sin_addr);
-        remote_port = ntohs(remote_sa.sin_port);
-        printf("new connection from %s:%d\n", remote_ip, remote_port);
-
-        /* receive and echo data until the other end closes the connection */
-        while ((bytes_received = recv(conn_fd, buf, BUF_SIZE, 0)) > 0) {
-            printf(".");
-            fflush(stdout);
-
-            /* send it back */
-            send(conn_fd, buf, bytes_received, 0);
+        if ((conn_fd = accept(listen_fd, (struct sockaddr *) &remote_sa, &addrlen)) < 0) {
+            perror("accept");
+            exit(15);
         }
-        printf("\n");
+        next = create_node(remote_sa,conn_fd);
+        
+        conn.sa = remote_sa;
+        conn.fd = conn_fd;
 
-        close(conn_fd);
+        // put the thread here, and send the fd,SA,buffer into a new thread
+        if (pthread_create(&child_thread, NULL, handle_connection, &conn) < 0) {
+            perror("pthread_create");
+            exit(11);
+        }
     }
+}
+
+/*
+ * handle_connection -
+ * input: pointer to a fresh conn struct
+ * output: whatever
+ */
+void *handle_connection(void *data) {
+
+    char *remote_ip;
+    uint16_t remote_port;
+
+    int bytes_received;
+
+
+    connection *conn = (connection *) data;
+    // unpack all my variables into this thread's stack variables.
+
+
+    /* announce our communication partner */
+    remote_ip = inet_ntoa(conn->sa.sin_addr);
+    remote_port = ntohs(conn->sa.sin_port);
+    printf("new connection from %s:%d\n", remote_ip, remote_port);
+    // or here, but I would need to pass ip and port in !!
+
+    /* receive and echo data until the other end closes the connection */
+    while ((bytes_received = recv(conn->fd, conn->buf, BUF_SIZE, 0)) > 0) {
+        printf(".");
+        fflush(stdout);
+
+        /* send it back */
+        send(conn->fd, conn->buf, bytes_received, 0);
+    }
+    printf("\n");
+
+    // there are two reasons to close a connection
+    // when the server quits
+    // when the client sends a disconnect command
+
+    close(conn->fd);
+    return NULL;
+}
+
+// singly-linked-list operations
+connection *handle_connection(void *data) {
+
+
+}
+
+
+
+
+int broadcast_all() {
+    return 0;
 }
