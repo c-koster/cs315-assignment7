@@ -4,7 +4,7 @@ CFLAGS=-g -Wall -pedantic
 all: chat-server chat-client
 
 chat-server: chat-server.c
-	gcc $(CFLAGS) -o $@ $^
+	gcc $(CFLAGS) -pthread -o $@ $^
 
 chat-client: chat-client.c
 	gcc $(CFLAGS) -o $@ $^
