@@ -34,13 +34,18 @@ pthread_mutex_t rubber_duck;
 // there is a head node which is globally accessable
 connection *conn_head = NULL;
 
+// better be holding the rubber duck when you play wit this gvar (which is used
+// to write formatted strings that broadcast to everyone)
+//char shared_buf[BUF_SIZE];
+
+
 // make a linked list of thread/clients full of file descriptor and client info
 // that I need, and write the input string to all connections.
 
 void *handle_connection(void *data);
 connection *create_node(int fd, struct sockaddr_in *sa); // create a node
-int broadcast(char *msg); // visit every node
-int remove_node(connection *fd); // delete a node from the linked list
+int broadcast(char *msg, int bytes); // visit every node
+int remove_node(int fd); // delete a node from the linked list
 
 
 
@@ -82,19 +87,19 @@ int main(int argc, char *argv[])
     while (1) {
         /* accept a new connection (will block until one appears) */
         addrlen = sizeof(remote_sa);
+
         if ((conn_fd = accept(listen_fd, (struct sockaddr *) &remote_sa, &addrlen)) < 0) {
             perror("accept");
             exit(15);
         }
 
+        // NOTE
         conn = create_node(conn_fd,&remote_sa); // this needs rubber duck
-
         // put the thread here, and send the fd,SA,buffer into a new thread
-        if (pthread_create(&child_thread, NULL, handle_connection, &conn) < 0) {
+        if (pthread_create(&child_thread, NULL, handle_connection, conn) < 0) {
             perror("pthread_create");
             exit(11);
         }
-
     }
     // anything to do when all clients disconnect?
 }
@@ -106,6 +111,7 @@ int main(int argc, char *argv[])
  */
 void *handle_connection(void *data)
 {
+    //char *s;
 
     char *remote_ip;
     uint16_t remote_port;
@@ -121,54 +127,52 @@ void *handle_connection(void *data)
 
     /* receive and echo data until the other end closes the connection */
     while ((bytes_received = recv(conn->fd, conn->buf, BUF_SIZE, 0)) > 0) {
-        printf(".");
-        fflush(stdout);
-
-        /* send it back */
-        send(conn->fd, conn->buf, bytes_received, 0);
+        //printf(".");
+        //fflush(stdout);
+        //snprintf(conn->buf,BUF_SIZE,"(culton)>%s\n",conn->buf);
+        broadcast(conn->buf,bytes_received);
+        //send(conn->fd, conn->buf, bytes_received, 0);
     }
+
     printf("\n");
+    //snprintf(conn->buf,BUF_SIZE,"(culton)>%s\n",conn->buf);
+    broadcast(conn->buf,bytes_received);
+
+    //remove_node(conn->fd);
 
     // there are two reasons to close a connection
     // when the server quits
     // when the client sends a disconnect command
 
-    close(conn->fd);
     return NULL;
 }
 
 // singly-linked-list operations -- -- --
 
-
 /*
- * create_node -
- * input: pointer to a fresh conn struct
- * output: whatever
+ * create_node - set head equal to a new node and link the previous head to its
+ * next pointer
+ * input:
+ * -file descriptor you got from accepting
+ * -pointer to the remote sockaddr filled with remote data
+ * output: newly changed head global variable, which can also be accessed directly
  */
 connection *create_node(int conn_fd, struct sockaddr_in *remote_sa)
 {
-    if (conn_head == NULL) {
-        conn_head = malloc(sizeof(struct connection));
-        conn_head->next = NULL;
-        printf("ptr:%p\n",conn_head);
-        conn_head->sa = *remote_sa;
-        conn_head->fd = conn_fd;
+    pthread_mutex_lock(&rubber_duck); // this looks like a critical section.
 
-        return conn_head;
-    }
+    // get a pointer to a new connection struct
+    connection *new = calloc(1, sizeof(struct connection));
 
-    connection *curr = conn_head;
-    while (curr->next != NULL) {
-        curr = curr->next;
-    }
+    //populate it
+    memcpy(&new->sa, remote_sa, sizeof(struct sockaddr_in)); // copy sockaddr data
+    new->fd = conn_fd;
+    new->next = conn_head;
+    conn_head = new;
 
-    curr->next = malloc(sizeof(struct connection));
-    curr = curr->next;
-    curr->sa = *remote_sa;
-    curr->fd = conn_fd;
-    curr->next = NULL;
+    pthread_mutex_unlock(&rubber_duck); // unlock (done adding stuff)
 
-    return curr;
+    return conn_head; // and return usable connection data
 }
 
 
@@ -176,20 +180,35 @@ connection *create_node(int conn_fd, struct sockaddr_in *remote_sa)
  * broadcast_all -
  * input:
  * -visit all items in the linked list and write msg to their fd/sockaddr
- * -maybe a file descriiptor to ignore (the person who sent it)
+ * -maybe a file descriptor to ignore (the person who sent it)
  * output: whatever
  */
-int broadcast(char *msg)
+int broadcast(char* msg, int bytes)
 {
+    connection *curr = conn_head;
+    while (curr != NULL) {
+        send(curr->fd, msg, bytes, 0);
+        curr = curr->next;
+    }
     return 0;
 }
 
 /*
  * remove_node -
- * input:
- * output: whatever
+ * input: a file descriptor by which to
+ * output: 0 on success, -1 if I didn't find anything (error).
  */
-int remove_node(connection *fd)
+int remove_node(int fd)
 {
+    //connection *curr = conn_head;
+    // get a pointer to the node with corresponding file descriptor
+    // if there is none should return -1
+
+    // set previous pointer too curr->next
+
+    // close the connections
+
+    // and free the memory
+    //close(fd);
     return 0;
 }
