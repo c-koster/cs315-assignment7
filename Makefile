@@ -7,7 +7,7 @@ chat-server: chat-server.c
 	gcc $(CFLAGS) -pthread -o $@ $^
 
 chat-client: chat-client.c
-	gcc $(CFLAGS) -o $@ $^
+	gcc $(CFLAGS) -pthread -o $@ $^
 
 .PHONY: clean
 clean:

@@ -24,6 +24,8 @@ typedef struct connection {
     // these come from the accept statement
     char buf[BUF_SIZE];
     // pass in a buffer so my broadcast_all function can write to threads
+    char *conn_remote_ip;
+    uint16_t conn_remote_port;
     char *nickname;
     struct connection *next; // keep a pointer to the next node.
 } connection;
@@ -44,7 +46,7 @@ connection *conn_head = NULL;
 
 void *handle_connection(void *data);
 connection *create_node(int fd, struct sockaddr_in *sa); // create a node
-int broadcast(char *msg, int bytes); // visit every node
+int broadcast(char *msg, int bytes, char *remote_ip, uint16_t remote_port, char *nickname); // visit every node
 int remove_node(int fd); // delete a node from the linked list
 
 
@@ -95,11 +97,13 @@ int main(int argc, char *argv[])
 
         // NOTE
         conn = create_node(conn_fd,&remote_sa); // this needs rubber duck
+        
         // put the thread here, and send the fd,SA,buffer into a new thread
         if (pthread_create(&child_thread, NULL, handle_connection, conn) < 0) {
             perror("pthread_create");
             exit(11);
         }
+
     }
     // anything to do when all clients disconnect?
 }
@@ -115,7 +119,13 @@ void *handle_connection(void *data)
 
     char *remote_ip;
     uint16_t remote_port;
+    //char *string_remote_port;
     int bytes_received;
+    char *name_in;
+    char name[BUF_SIZE];
+    int new_line;
+    char *end_ch = "\0";
+
 
     connection *conn = (connection *) data; // unpack all my variables
     //printf("conn: %d\n",conn->sa);
@@ -124,19 +134,37 @@ void *handle_connection(void *data)
     remote_port = ntohs(conn->sa.sin_port);
     printf("new connection from %s:%d\n", remote_ip, remote_port);
     // or here, but I would need to pass ip and port in !!
+    //string_remote_port = (* char) remote_port;
+
+    conn->conn_remote_ip = remote_ip;
+    conn->conn_remote_port = remote_port;
 
     /* receive and echo data until the other end closes the connection */
     while ((bytes_received = recv(conn->fd, conn->buf, BUF_SIZE, 0)) > 0) {
-        //printf(".");
-        //fflush(stdout);
+        printf(".");
+        fflush(stdout);
         //snprintf(conn->buf,BUF_SIZE,"(culton)>%s\n",conn->buf);
-        broadcast(conn->buf,bytes_received);
+        
+        if( strncmp(conn->buf, "/nick", 5) == 0 ) {
+            name_in = conn->buf + 6;
+            strcpy(name, name_in);
+            //printf("who here: %s", name);
+            new_line = strlen(name);
+            name[new_line-1] = *end_ch;
+            //printf("who here : %s\n", name);
+            conn->nickname = name;
+            //printf("name: %s\n", conn->nickname);
+        }
+     
+
+        broadcast(conn->buf,bytes_received, conn->conn_remote_ip, conn->conn_remote_port, conn->nickname);
+
         //send(conn->fd, conn->buf, bytes_received, 0);
     }
 
     printf("\n");
     //snprintf(conn->buf,BUF_SIZE,"(culton)>%s\n",conn->buf);
-    broadcast(conn->buf,bytes_received);
+    broadcast(conn->buf,bytes_received, conn->conn_remote_ip, conn->conn_remote_port, conn->nickname);
 
     //remove_node(conn->fd);
 
@@ -169,7 +197,7 @@ connection *create_node(int conn_fd, struct sockaddr_in *remote_sa)
     new->fd = conn_fd;
     new->next = conn_head;
     conn_head = new;
-
+    
     pthread_mutex_unlock(&rubber_duck); // unlock (done adding stuff)
 
     return conn_head; // and return usable connection data
@@ -183,13 +211,23 @@ connection *create_node(int conn_fd, struct sockaddr_in *remote_sa)
  * -maybe a file descriptor to ignore (the person who sent it)
  * output: whatever
  */
-int broadcast(char* msg, int bytes)
+int broadcast(char* msg, int bytes, char *remote_ip, uint16_t remote_port, char *nickname)
 {
+    char full_msg[BUF_SIZE];
+
     connection *curr = conn_head;
+
+    if ( nickname != NULL ) {
+        sprintf(full_msg, "%s: %s", nickname, msg);
+    } else {
+        sprintf(full_msg, "%s:%d : %s", remote_ip, remote_port, msg);
+    }
     while (curr != NULL) {
-        send(curr->fd, msg, bytes, 0);
+        
+        send(curr->fd, full_msg, BUF_SIZE, 0);
         curr = curr->next;
     }
+    memset(full_msg, 0, sizeof(full_msg));
     return 0;
 }
 
