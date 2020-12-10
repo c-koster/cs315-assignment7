@@ -174,34 +174,35 @@ void *handle_connection(void *data)
     conn->conn_remote_port = remote_port;
 
     /* receive and echo data until the other end closes the connection */
-    while ((bytes_received = recv(conn->fd, conn->buf, BUF_SIZE, 0)) > 0) {
-        //printf(".");
-        fflush(stdout);
+    while ((bytes_received = read(conn->fd, conn->buf, BUF_SIZE)) > 0) {
 
         if (strncmp(conn->buf, "/nick", 5) == 0) {
+
+            // set a nickname -- thanks vic
             name_in = conn->buf + 6;
             strcpy(name, name_in);
-            //printf("who here: %s", name);
             new_line = strlen(name);
             name[new_line-1] = *end_ch;
-            //printf("who here : %s\n", name);
             conn->nickname = name;
-            n = snprintf(conn->buf_out,BUF_SIZE,"User (%s:%d) is now known as %s.",  conn->conn_remote_ip, conn->conn_remote_port, conn->nickname);
+
+            n = snprintf(conn->buf_out, BUF_SIZE, "User (%s:%d) is now known as %s.", conn->conn_remote_ip, conn->conn_remote_port, conn->nickname);
             printf("%s\n",conn->buf_out);
-            broadcast(conn->buf_out,n);
 
         } else {
             // format a string for printing
             n = snprintf(conn->buf_out, BUF_SIZE, "%s: %s", (conn->nickname != NULL) ? conn->nickname : "unknown", conn->buf);
-            memset(conn->buf, '\0', BUF_SIZE);
-            broadcast(conn->buf_out,n);
         }
+        broadcast(conn->buf_out, n);
+        //printf("I broadcasted a message. clients should have got it already ...\n");
+        memset(conn->buf, '\0', BUF_SIZE);
+
     }
 
     // if they are out of the above loop -- we should disconnect
     n = snprintf(conn->buf_out, BUF_SIZE, "User %s (%s:%d) has disconnected.", (conn->nickname != NULL) ? conn->nickname : "unknown", conn->conn_remote_ip, conn->conn_remote_port);
     printf("%s\n",conn->buf_out);
     broadcast(conn->buf_out,n);
+
     remove_node(conn->fd);
 
     return NULL;
@@ -249,7 +250,9 @@ int broadcast(char *msg, int bytes)
     connection *curr = conn_head;
 
     while (curr != NULL) {
-        send(curr->fd, msg, bytes, 0);
+        write(curr->fd, msg, bytes);
+        printf("writing to fd=%d\n",curr->fd);
+
         curr = curr->next;
     }
 
