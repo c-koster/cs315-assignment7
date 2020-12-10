@@ -211,6 +211,30 @@ void *handle_connection(void *data)
 
 // singly-linked-list operations -- -- --
 
+
+/*
+ * broadcast_all - should be locked before calling (Before writing a string to the global buffer)
+ * input: a pointer to the string we would like to write to everyone
+ * -visit all items in the linked list and write msg to their fd/sockaddr
+ * -maybe a file descriptor to ignore (the person who sent it)
+ * output: whatever
+ */
+int broadcast(char *msg, int bytes)
+{
+    connection *curr = conn_head;
+
+    while (curr != NULL) {
+        if (write(curr->fd, msg, bytes) < 0){
+            perror("write");
+        };
+        //printf("writing to fd=%d\n",curr->fd);
+        fsync(curr->fd);
+        curr = curr->next;
+    }
+
+    return 0;
+}
+
 /*
  * create_node - set head equal to a new node and link the previous head to its
  * next pointer
@@ -237,28 +261,6 @@ connection *create_node(int conn_fd, struct sockaddr_in *remote_sa)
     return conn_head; // and return usable connection data
 }
 
-
-/*
- * broadcast_all - should be locked before calling (Before writing a string to the global buffer)
- * input: a pointer to the string we would like to write to everyone
- * -visit all items in the linked list and write msg to their fd/sockaddr
- * -maybe a file descriptor to ignore (the person who sent it)
- * output: whatever
- */
-int broadcast(char *msg, int bytes)
-{
-    connection *curr = conn_head;
-
-    while (curr != NULL) {
-        write(curr->fd, msg, bytes);
-        printf("writing to fd=%d\n",curr->fd);
-
-        curr = curr->next;
-    }
-
-    return 0;
-}
-
 /*
  * remove_node -
  * input: a file descriptor by which to locate the node
@@ -270,6 +272,7 @@ int remove_node(int fd)
     pthread_mutex_lock(&rubber_duck); // this looks like a critical section.
 
     connection *curr = conn_head;
+    connection *temp;
     if (curr == NULL) {
         return -1;
     }
@@ -284,9 +287,11 @@ int remove_node(int fd)
     //printf("I am removing node %s:%d\n",curr->conn_remote_ip,curr->conn_remote_port);
 
     close(curr->fd);
+    temp = curr->next; // don't you dare use after free
+
     // and free the memory
     free(curr);
-    curr = curr->next;
+    curr = temp;
     // set previous pointer to curr->next
 
     pthread_mutex_unlock(&rubber_duck); // unlock

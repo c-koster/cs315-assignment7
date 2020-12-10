@@ -71,7 +71,9 @@ int main(int argc, char *argv[])
     // infinite loop of reading from terminal and sending the data.
     // pressing CTRL-D will quit you out of here.
     while ((n = read(0, buf, BUF_SIZE)) > 0) {
-        write(conn_fd, buf, n);
+        if (write(conn_fd, buf, n) <0 ){
+            perror("write");
+        };
 
     }
     printf("Exiting.\n");
