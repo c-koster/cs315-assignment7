@@ -93,7 +93,7 @@ void *recieve_messages(void *data) {
     while (1) {
 
         n = recv(conn_fd->c_fd, buf, BUF_SIZE, 0);
-        //printf("i recieved %d bytes\n",n);
+        printf("i recieved %d bytes\n",n);
         buf[n] = '\0';  // null-terminate string before printing
 
         tmp = localtime(&t);

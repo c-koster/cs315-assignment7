@@ -171,7 +171,8 @@ void *handle_connection(void *data)
         } else {
             // format a string for printing
             n = snprintf(conn->buf_out, BUF_SIZE, "%s: %s", (conn->nickname != NULL) ? conn->nickname : "unknown", conn->buf);
-            //printf("sending %d bytes over\n",n);
+            memset(conn->buf, '\0', BUF_SIZE);
+            printf("sending %d bytes over\n",n);
             broadcast(conn->buf_out,n);
 
         }
@@ -234,7 +235,6 @@ int broadcast(char *msg, int bytes)
         send(curr->fd, msg, bytes, 0);
         curr = curr->next;
     }
-    memset(msg, '\0', BUF_SIZE);
 
     return 0;
 }
