@@ -59,11 +59,34 @@ connection *create_node(int fd, struct sockaddr_in *sa); // create a node
 int broadcast(char *msg, int bytes); // visit every node
 int remove_node(int fd); // delete a node from the linked list
 
+int remove_all_nodes(); // called by the SIGINT handler to quit nicely
 
+
+// handle CTRL-C by cleaning up nicely and exiting
+void handler(int signum)
+{
+    remove_all_nodes();
+    exit(0);
+}
 
 
 int main(int argc, char *argv[])
 {
+    // signal handler --
+    struct sigaction sig_act;
+
+    /* set up the struct that defines what to do on receipt of a signal */
+    memset(&sig_act, '\0', sizeof(sig_act));
+    sig_act.sa_handler = handler;
+    sigemptyset(&sig_act.sa_mask);
+    sig_act.sa_flags = 0;
+
+    // we want to handle SIGINT/CTRL-C
+    if (sigaction(SIGINT, &sig_act, NULL) < 0) {
+        perror("sigaction");
+        exit(1);
+    }
+
     // create a socket for listening --
     char *listen_port;
     int listen_fd,conn_fd;
@@ -154,9 +177,8 @@ void *handle_connection(void *data)
     while ((bytes_received = recv(conn->fd, conn->buf, BUF_SIZE, 0)) > 0) {
         //printf(".");
         fflush(stdout);
-        //snprintf(conn->buf,BUF_SIZE,"(culton)>%s\n",conn->buf);
 
-        if ( strncmp(conn->buf, "/nick", 5) == 0 ) {
+        if (strncmp(conn->buf, "/nick", 5) == 0) {
             name_in = conn->buf + 6;
             strcpy(name, name_in);
             //printf("who here: %s", name);
@@ -164,7 +186,7 @@ void *handle_connection(void *data)
             name[new_line-1] = *end_ch;
             //printf("who here : %s\n", name);
             conn->nickname = name;
-            n = snprintf(conn->buf_out,BUF_SIZE,"User (%s:%d) is now known as %s.\n",  conn->conn_remote_ip, conn->conn_remote_port, conn->nickname);
+            n = snprintf(conn->buf_out,BUF_SIZE,"User (%s:%d) is now known as %s.",  conn->conn_remote_ip, conn->conn_remote_port, conn->nickname);
             printf("%s\n",conn->buf_out);
             broadcast(conn->buf_out,n);
 
@@ -172,20 +194,15 @@ void *handle_connection(void *data)
             // format a string for printing
             n = snprintf(conn->buf_out, BUF_SIZE, "%s: %s", (conn->nickname != NULL) ? conn->nickname : "unknown", conn->buf);
             memset(conn->buf, '\0', BUF_SIZE);
-            printf("sending %d bytes over\n",n);
             broadcast(conn->buf_out,n);
-
         }
     }
 
-    // if they are out of this loop -- we should disconnect
+    // if they are out of the above loop -- we should disconnect
     n = snprintf(conn->buf_out, BUF_SIZE, "User %s (%s:%d) has disconnected.", (conn->nickname != NULL) ? conn->nickname : "unknown", conn->conn_remote_ip, conn->conn_remote_port);
     printf("%s\n",conn->buf_out);
     broadcast(conn->buf_out,n);
     remove_node(conn->fd);
-
-    // there are two reasons to close a connection
-    // when the server quits
 
     return NULL;
 }
@@ -280,7 +297,7 @@ int remove_node(int fd)
  * output: whatever, 0?
  */
 int remove_all_nodes() {
-    char *s = "Connection closed by host.";
+    char *s = "Connection closed by host.\n";
     int s_length = 27;
     broadcast(s,s_length);
 
@@ -292,7 +309,7 @@ int remove_all_nodes() {
     while (curr != NULL) {
         temp = curr->next; // don't you dare use after free
         close(curr->fd);
-        free(curr);
+        //free(curr);
         curr = temp;
     }
     pthread_mutex_unlock(&rubber_duck);

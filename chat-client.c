@@ -68,13 +68,14 @@ int main(int argc, char *argv[])
             exit(11);
     }
 
-    /* infinite loop of reading from terminal, sending the data, and printing
-     * what we get back */
+    // infinite loop of reading from terminal and sending the data.
+    // pressing CTRL-D will quit you out of here.
     while ((n = read(0, buf, BUF_SIZE)) > 0) {
 
         send(conn_fd, buf, n, 0);
-    }
 
+    }
+    printf("Exiting.\n");
     close(conn_fd);
 }
 
@@ -90,16 +91,12 @@ void *recieve_messages(void *data) {
     struct tm *tmp;
     t = time(NULL);
 
-    while (1) {
-
-        n = recv(conn_fd->c_fd, buf, BUF_SIZE, 0);
-        printf("i recieved %d bytes\n",n);
+    while ((n = recv(conn_fd->c_fd, buf, BUF_SIZE, 0)) > 0) {
         buf[n] = '\0';  // null-terminate string before printing
 
         tmp = localtime(&t);
         strftime(time_string, TIME_BUF, "%H:%M:%S", tmp);
-        printf("%s: ",time_string);
-        puts(buf);
+        printf("%s: %s",time_string,buf);
     }
     return NULL;
 }
