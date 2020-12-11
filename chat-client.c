@@ -13,6 +13,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <time.h>
+#include <errno.h>
 
 #define BUF_SIZE 4096
 
@@ -71,13 +72,24 @@ int main(int argc, char *argv[])
     // infinite loop of reading from terminal and sending the data.
     // pressing CTRL-D will quit you out of here.
     while ((n = read(0, buf, BUF_SIZE)) > 0) {
-        if (write(conn_fd, buf, n) <0 ){
+        if (write(conn_fd, buf, n) < 0){
             perror("write");
+            exit(11);
         };
-
     }
+
+    // error checking read
+    if (n < 0) {
+        perror("read");
+
+        exit(4);
+    }
+
     printf("Exiting.\n");
-    close(conn_fd);
+    if (close(conn_fd) < 0) {
+        perror("close");
+        exit(6);
+    }
 }
 
 void *recieve_messages(void *data) {
@@ -99,5 +111,6 @@ void *recieve_messages(void *data) {
         printf("%s: %s", time_string, buf);
         memset(buf,'\0',BUF_SIZE);
     }
+
     return NULL;
 }

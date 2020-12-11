@@ -1,6 +1,9 @@
 Culton and Victoria write a chat server/client
 
 notes:
-    a
+    ./chat-server <port number>
+    ./chat-client <hostname> <port number>
+
 sources:
     https://community.spiceworks.com/linux/man/3/snprintf
+    https://linux.die.net/man/3/pthread_mutex_lock

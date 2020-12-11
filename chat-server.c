@@ -17,6 +17,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
 
 
 #include <pthread.h>
@@ -174,13 +175,17 @@ void *handle_connection(void *data)
     conn->conn_remote_port = remote_port;
 
     /* receive and echo data until the other end closes the connection */
+
     while ((bytes_received = read(conn->fd, conn->buf, BUF_SIZE)) > 0) {
 
-        if (strncmp(conn->buf, "/nick", 5) == 0) {
+        conn->buf[bytes_received] = '\0';
+        // i before e except after c
+
+        if (strncmp(conn->buf, "/nick ", 6) == 0) {
 
             // set a nickname -- thanks vic
             name_in = conn->buf + 6;
-            strcpy(name, name_in);
+            strncpy(name, name_in,BUF_SIZE);
             new_line = strlen(name);
             name[new_line-1] = *end_ch;
             conn->nickname = name;
@@ -193,9 +198,14 @@ void *handle_connection(void *data)
             n = snprintf(conn->buf_out, BUF_SIZE, "%s: %s", (conn->nickname != NULL) ? conn->nickname : "unknown", conn->buf);
         }
         broadcast(conn->buf_out, n);
-        //printf("I broadcasted a message. clients should have got it already ...\n");
         memset(conn->buf, '\0', BUF_SIZE);
 
+        errno = 0;
+    }
+
+    if (errno != 0) { // check if my loop exited because of an error
+        perror("read");
+        exit(4);
     }
 
     // if they are out of the above loop -- we should disconnect
@@ -221,6 +231,10 @@ void *handle_connection(void *data)
  */
 int broadcast(char *msg, int bytes)
 {
+    if (pthread_mutex_lock(&rubber_duck) < 0) {
+        perror("pthread_mutex_lock");
+        exit(5);
+    }
     connection *curr = conn_head;
 
     while (curr != NULL) {
@@ -228,8 +242,12 @@ int broadcast(char *msg, int bytes)
             perror("write");
         };
         //printf("writing to fd=%d\n",curr->fd);
-        fsync(curr->fd);
         curr = curr->next;
+    }
+
+    if (pthread_mutex_unlock(&rubber_duck) < 0) {
+        perror("pthread_mutex_unlock");
+        exit(5);
     }
 
     return 0;
@@ -245,10 +263,17 @@ int broadcast(char *msg, int bytes)
  */
 connection *create_node(int conn_fd, struct sockaddr_in *remote_sa)
 {
-    pthread_mutex_lock(&rubber_duck); // this looks like a critical section.
+    if (pthread_mutex_lock(&rubber_duck) < 0) {
+        perror("pthread_mutex_lock");
+        exit(5);
+    } // this looks like a critical section.
 
     // get a pointer to a new connection struct
     connection *new = calloc(1, sizeof(struct connection));
+    if (new == NULL) {
+        perror("malloc");
+        exit(1);
+    }
 
     //populate it
     memcpy(&new->sa, remote_sa, sizeof(struct sockaddr_in)); // copy sockaddr data
@@ -256,7 +281,11 @@ connection *create_node(int conn_fd, struct sockaddr_in *remote_sa)
     new->next = conn_head;
     conn_head = new;
 
-    pthread_mutex_unlock(&rubber_duck); // unlock (done adding stuff)
+
+    if (pthread_mutex_unlock(&rubber_duck) < 0) {
+        perror("pthread_mutex_unlock");
+        exit(5);
+    } // unlock (done adding stuff)
 
     return conn_head; // and return usable connection data
 }
@@ -269,7 +298,10 @@ connection *create_node(int conn_fd, struct sockaddr_in *remote_sa)
 int remove_node(int fd)
 {
 
-    pthread_mutex_lock(&rubber_duck); // this looks like a critical section.
+    if (pthread_mutex_lock(&rubber_duck) < 0) {
+        perror("pthread_mutex_lock");
+        exit(5);
+    }  // this looks like a critical section.
 
     connection *curr = conn_head;
     connection *temp;
@@ -286,7 +318,10 @@ int remove_node(int fd)
     // close the connection
     //printf("I am removing node %s:%d\n",curr->conn_remote_ip,curr->conn_remote_port);
 
-    close(curr->fd);
+    if (close(curr->fd) < 0) {
+        perror("close");
+        exit(6);
+    }
     temp = curr->next; // don't you dare use after free
 
     // and free the memory
@@ -294,14 +329,18 @@ int remove_node(int fd)
     curr = temp;
     // set previous pointer to curr->next
 
-    pthread_mutex_unlock(&rubber_duck); // unlock
+    if (pthread_mutex_unlock(&rubber_duck) < 0) {
+        perror("pthread_mutex_unlock");
+        exit(5);
+    }
+
     return 0;
 }
 
 /*
  * remove_all_nodes - call me when you press control d
  * input: nothing
- * -visit all items in the linked list and free/close each
+ * -visit all items in the linked list and frees/closes each
  * output: whatever, 0?
  */
 int remove_all_nodes() {
@@ -309,18 +348,29 @@ int remove_all_nodes() {
     int s_length = 27;
     broadcast(s,s_length);
 
-    pthread_mutex_lock(&rubber_duck); // very very critical
+    if (pthread_mutex_lock(&rubber_duck) < 0) {
+        perror("pthread_mutex_lock");
+        exit(5);
+    } // very very critical
 
     connection *curr = conn_head;
     connection *temp = conn_head;
 
     while (curr != NULL) {
         temp = curr->next; // don't you dare use after free
-        close(curr->fd);
-        //free(curr);
+
+        free(curr);
+
+        if (close(curr->fd) < 0) {
+            perror("close");
+            exit(6);
+        }
         curr = temp;
     }
-    pthread_mutex_unlock(&rubber_duck);
+    if (pthread_mutex_unlock(&rubber_duck) < 0) {
+        perror("pthread_mutex_unlock");
+        exit(5);
+    }
 
     return 0;
 }
