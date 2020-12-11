@@ -14,6 +14,7 @@
 #include <pthread.h>
 #include <time.h>
 #include <errno.h>
+#include <signal.h>
 
 #define BUF_SIZE 4096
 
@@ -111,5 +112,11 @@ void *recieve_messages(void *data) {
         memset(buf,'\0',BUF_SIZE);
     }
 
+
+    // shut down the process if we get out of the while loop ... 
+    if (kill(getpid(), SIGINT) < 0) {
+        perror("kill");
+        exit(4);
+    }
     return NULL;
 }
