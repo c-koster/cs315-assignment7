@@ -101,11 +101,10 @@ void *recieve_messages(void *data) {
     char time_string[TIME_BUF];
     time_t t;
     struct tm *tmp;
-    t = time(NULL);
 
     while ((n = read(conn_fd->c_fd, buf, BUF_SIZE)) > 0) {
         buf[n] = '\0';  // null-terminate string before printing
-
+        t = time(NULL);
         tmp = localtime(&t);
         strftime(time_string, TIME_BUF, "%H:%M:%S", tmp);
         printf("%s: %s", time_string, buf);

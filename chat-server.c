@@ -63,10 +63,11 @@ int remove_node(int fd); // delete a node from the linked list
 int remove_all_nodes(); // called by the SIGINT handler to quit nicely
 
 
-// handle CTRL-C by cleaning up nicely and exiting
+// handle CTRL-C by cleaning up nicely with a descriptive message and exiting
 void handler(int signum)
 {
-    remove_all_nodes();
+    char *s = "Connection closed by host.\n";
+    broadcast(s,strlen(s));
     exit(0);
 }
 
@@ -149,11 +150,10 @@ int main(int argc, char *argv[])
  */
 void *handle_connection(void *data)
 {
-    //char *s;
 
     char *remote_ip;
     uint16_t remote_port;
-    //char *string_remote_port;
+
     int bytes_received;
     char *name_in;
     char name[BUF_SIZE];
@@ -190,7 +190,7 @@ void *handle_connection(void *data)
             name[new_line-1] = *end_ch;
             conn->nickname = name;
 
-            n = snprintf(conn->buf_out, BUF_SIZE, "User (%s:%d) is now known as %s.", conn->conn_remote_ip, conn->conn_remote_port, conn->nickname);
+            n = snprintf(conn->buf_out, BUF_SIZE, "User (%s:%d) is now known as %s.\n", conn->conn_remote_ip, conn->conn_remote_port, conn->nickname);
             printf("%s\n",conn->buf_out);
 
         } else {
@@ -209,8 +209,8 @@ void *handle_connection(void *data)
     }
 
     // if they are out of the above loop -- we should disconnect
-    n = snprintf(conn->buf_out, BUF_SIZE, "User %s (%s:%d) has disconnected.", (conn->nickname != NULL) ? conn->nickname : "unknown", conn->conn_remote_ip, conn->conn_remote_port);
-    printf("%s\n",conn->buf_out);
+    n = snprintf(conn->buf_out, BUF_SIZE, "User %s (%s:%d) has disconnected.\n", (conn->nickname != NULL) ? conn->nickname : "unknown", conn->conn_remote_ip, conn->conn_remote_port);
+    printf("%s",conn->buf_out);
     broadcast(conn->buf_out,n);
 
     remove_node(conn->fd);
@@ -303,17 +303,22 @@ int remove_node(int fd)
         exit(5);
     }  // this looks like a critical section.
 
+    connection *prev = NULL;
     connection *curr = conn_head;
     connection *temp;
     if (curr == NULL) {
         return -1;
     }
+
     // get a pointer to the node with corresponding file descriptor
     while (curr->fd != fd) {
+        prev = curr;
         curr = curr->next;
-    }
 
-    // if there is none should return -1
+        if (curr == NULL) {
+            return -1; //do I fall off the end of the list while looking
+        }
+    }
 
     // close the connection
     //printf("I am removing node %s:%d\n",curr->conn_remote_ip,curr->conn_remote_port);
@@ -323,17 +328,18 @@ int remove_node(int fd)
         exit(6);
     }
     temp = curr->next; // don't you dare use after free
-
-    // and free the memory
     free(curr);
-    curr = temp;
-    // set previous pointer to curr->next
+
+    if (prev == NULL) { // if there was no previous node ...
+        conn_head = temp;
+    } else { // set previous pointer to curr->next
+        prev->next = temp;
+    }
 
     if (pthread_mutex_unlock(&rubber_duck) < 0) {
         perror("pthread_mutex_unlock");
         exit(5);
     }
-
     return 0;
 }
 
@@ -343,10 +349,8 @@ int remove_node(int fd)
  * -visit all items in the linked list and frees/closes each
  * output: whatever, 0?
  */
+/*
 int remove_all_nodes() {
-    char *s = "Connection closed by host.\n";
-    int s_length = 27;
-    broadcast(s,s_length);
 
     if (pthread_mutex_lock(&rubber_duck) < 0) {
         perror("pthread_mutex_lock");
@@ -354,23 +358,19 @@ int remove_all_nodes() {
     } // very very critical
 
     connection *curr = conn_head;
-    connection *temp = conn_head;
-
     while (curr != NULL) {
-        temp = curr->next; // don't you dare use after free
 
-        free(curr);
-
+        printf("closing fd=%d\n",curr->fd);
         if (close(curr->fd) < 0) {
             perror("close");
             exit(6);
         }
-        curr = temp;
+        curr = curr->next; // don't you dare use after free
     }
+
     if (pthread_mutex_unlock(&rubber_duck) < 0) {
         perror("pthread_mutex_unlock");
         exit(5);
     }
-
     return 0;
-}
+} */
