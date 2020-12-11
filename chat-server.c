@@ -191,7 +191,7 @@ void *handle_connection(void *data)
             conn->nickname = name;
 
             n = snprintf(conn->buf_out, BUF_SIZE, "User (%s:%d) is now known as %s.\n", conn->conn_remote_ip, conn->conn_remote_port, conn->nickname);
-            printf("%s\n",conn->buf_out);
+            printf("%s",conn->buf_out);
 
         } else {
             // format a string for printing
@@ -342,35 +342,3 @@ int remove_node(int fd)
     }
     return 0;
 }
-
-/*
- * remove_all_nodes - call me when you press control d
- * input: nothing
- * -visit all items in the linked list and frees/closes each
- * output: whatever, 0?
- */
-/*
-int remove_all_nodes() {
-
-    if (pthread_mutex_lock(&rubber_duck) < 0) {
-        perror("pthread_mutex_lock");
-        exit(5);
-    } // very very critical
-
-    connection *curr = conn_head;
-    while (curr != NULL) {
-
-        printf("closing fd=%d\n",curr->fd);
-        if (close(curr->fd) < 0) {
-            perror("close");
-            exit(6);
-        }
-        curr = curr->next; // don't you dare use after free
-    }
-
-    if (pthread_mutex_unlock(&rubber_duck) < 0) {
-        perror("pthread_mutex_unlock");
-        exit(5);
-    }
-    return 0;
-} */
